@@ -212,13 +212,17 @@ jobs:
           # the artifact names; and only if main is still the commit render built
           # on, with the same formula, so a render of a stale main stops here.
           main_commit=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
-          main_blob=$(gh api "repos/$REPO/contents/Formula/$NAME.rb?ref=$main_commit" --jq .sha)
-          if ! [[ "$main_commit" =~ $sha && "$main_blob" =~ $sha ]]; then
-            echo "::error::cannot read main's commit and Formula/$NAME.rb from the API"
+          if ! [[ "$main_commit" =~ $sha ]]; then
+            echo "::error::cannot read main's commit from the API"
             exit 1
           fi
-          if [ "$main_commit" != "$base_commit" ] || [ "$main_blob" != "$base_blob" ]; then
+          if [ "$main_commit" != "$base_commit" ]; then
             echo "::error::main moved since render read it ($base_commit, now $main_commit), so $NAME $version is not proposed: the next run renders from the new main"
+            exit 1
+          fi
+          main_blob=$(gh api "repos/$REPO/contents/Formula/$NAME.rb?ref=$main_commit" --jq .sha)
+          if [ "$main_blob" != "$base_blob" ]; then
+            echo "::error::Formula/$NAME.rb on main is not the one render started from, so $NAME $version is not proposed"
             exit 1
           fi
           # An assignment, so that set -e stops the run if base64 fails; inside
