@@ -6,9 +6,10 @@ name: ci
 # on each platform the release ships for. warden's homebrew workflow opens a bump
 # pull request with auto-merge on, so these required checks are what merges it.
 #
-# On a pull request the manifest check runs the script and release-signers from
-# main, not from the pull request, so that a pull request cannot loosen the check
-# it is judged by.
+# The manifest check runs the script and release-signers from the commit being
+# built on, not from the change itself: the pull request's base, or for a push to
+# main the commit before it. So a change cannot loosen the check it is judged by,
+# and a change to the formula's template merges in two steps (see AGENTS.md).
 
 on:
   pull_request:
@@ -28,22 +29,21 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           path: base
           persist-credentials: false
       - name: Test the formula script
         run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
       - name: Check the formula against the release's signed manifest
         run: |
-          if [ -f base/scripts/formula.py ]; then
+          if [ -f base/scripts/formula.py ] && [ -f base/Formula/warden.rb ]; then
             python3 -I base/scripts/formula.py check Formula/warden.rb base/Formula/warden.rb
-          elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -e base/Formula ]; then
-            echo "::error::main has a formula but no scripts/formula.py to check it with"
+          elif [ -e base/scripts ] || [ -e base/Formula ]; then
+            echo "::error::the base commit has only part of the formula and its script: refusing to check without them"
             exit 1
           else
-            # A push to main, or the pull request that adds the script.
+            # Only the change that adds both to a tap that had neither.
             python3 -I scripts/formula.py check Formula/warden.rb
           fi
 

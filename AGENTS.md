@@ -19,9 +19,11 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 
 ## Changes
 
-- A change to the formula's shape goes in `TEMPLATE` in `scripts/formula.py`,
-  followed by `python3 -I scripts/formula.py render <version> Formula/warden.rb`.
-  warden's workflow checks out `main`, so the next bump uses it.
+- A change to the formula's shape goes in `TEMPLATE` in `scripts/formula.py`, in
+  two pull requests, because CI checks the formula with the script from the base
+  commit: first the script alone, then `python3 -I scripts/formula.py render
+  <version> Formula/warden.rb`. warden's workflow checks out `main`, so the next
+  bump uses the new shape anyway.
 - When warden's release key changes, update `release-signers` in the same way as
   warden's list: add the new key, and keep the old one only while a formula still
   needs it.
