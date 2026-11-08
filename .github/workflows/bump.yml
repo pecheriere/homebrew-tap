@@ -184,7 +184,7 @@ jobs:
             echo "No changed formula for $NAME: nothing to propose."
             exit 0
           fi
-          sha=^[0-9a-f]{40}$
+          sha='^[0-9a-f]{40}$'
           version=$(cat formula/version)
           base_commit=$(cat formula/base-commit)
           base_blob=$(cat formula/base-blob)

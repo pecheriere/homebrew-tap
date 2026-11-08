@@ -81,6 +81,16 @@ jobs:
         run: |
           # The committed formula, not the checked-out file, which attributes could change.
           git -C change show HEAD:Formula/warden.rb > "$RUNNER_TEMP/warden.rb"
+          # A pull request that leaves warden's formula as the base has it, such as
+          # another formula's bump, needs no download: the base's was checked when it
+          # landed, so another project's outage does not hold it up. A push to main
+          # always gets the full check.
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] \
+            && git -C base show HEAD:Formula/warden.rb > "$RUNNER_TEMP/base-warden.rb" 2> /dev/null \
+            && cmp -s "$RUNNER_TEMP/warden.rb" "$RUNNER_TEMP/base-warden.rb"; then
+            echo "Formula/warden.rb is unchanged from the base."
+            exit 0
+          fi
           if [ -f base/scripts/formula.py ] && [ -f base/Formula/warden.rb ]; then
             python3 -I base/scripts/formula.py check "$RUNNER_TEMP/warden.rb" base/Formula/warden.rb
           elif [ "$(git -C base rev-parse HEAD)" = "$FIRST_COMMIT" ]; then
