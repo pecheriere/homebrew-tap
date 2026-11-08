@@ -22,7 +22,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 | `scripts/landfall.py` | fetches that asset once the release's signed tag and its attestation check out, never going back; CI runs its `check-tree` |
 | `landfall-release-signers` | the landfall-release key the release tag must be signed with, a copy of landfall's `crates/cli/assets/release-signers` |
 | `scripts/testdata/v0.1.0-rc.1/` | landfall 0.1.0-rc.1's real tag object and its `landfall.rb`, saved as `asset` because check-tree refuses any other file named `landfall.rb`; test fixtures only |
-| `.github/workflows/bump.yml` | every hour, renders each formula from its project's latest release and opens an auto-merging pull request for each that changed |
+| `.github/workflows/bump.yml` | every hour, renders each formula from its project's latest release and opens an auto-merging pull request for each that changed, one matrix leg per formula |
 
 ## Changes
 
@@ -102,7 +102,7 @@ The maintainer does this once, in the repository's settings:
 - Create a fine-grained personal access token for this repository only, with
   read and write access to Contents and Pull requests, and no Workflows
   permission. Store it as `HOMEBREW_TAP_TOKEN` in an environment named
-  `homebrew-tap` whose deployment rule allows `main` only. Only `bump`'s `propose`
+  `homebrew-bump` whose deployment rule allows `main` only. Only `bump`'s `propose`
   job uses that environment.
 - Turn on `allow_auto_merge`, so a bump pull request can merge once its checks
   pass.
