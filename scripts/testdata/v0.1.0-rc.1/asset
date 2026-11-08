@@ -1,0 +1,31 @@
+class Landfall < Formula
+  desc "Continuous delivery for self-hosters"
+  homepage "https://github.com/pecheriere/landfall"
+  version "0.1.0-rc.1"
+  license any_of: ["MIT", "Apache-2.0"]
+
+  on_macos do
+    depends_on arch: :arm64
+    url "https://github.com/pecheriere/landfall/releases/download/v0.1.0-rc.1/landfall-0.1.0-rc.1-darwin-arm64"
+    sha256 "3335bab0be8d322ca6e6eaaaa9ac85dbf1d72ea76727d2b26c9671f195fd3873"
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/pecheriere/landfall/releases/download/v0.1.0-rc.1/landfall-0.1.0-rc.1-linux-arm64"
+      sha256 "dada028052c006d6fc62d7e45979ca1fb37c80c1e291ace5b0457f70dfd07b91"
+    end
+    on_intel do
+      url "https://github.com/pecheriere/landfall/releases/download/v0.1.0-rc.1/landfall-0.1.0-rc.1-linux-amd64"
+      sha256 "9ec7532e6a907d18f05b2cb2e47d1398920926706b807c66a501d8ab006c37c9"
+    end
+  end
+
+  def install
+    bin.install Dir["landfall-*"].first => "landfall"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/landfall --version")
+  end
+end

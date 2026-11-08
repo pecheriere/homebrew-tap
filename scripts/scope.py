@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 # The formulae warden's and other projects' workflows may bump on their own.
-FORMULAE = ("warden",)
+FORMULAE = ("warden", "landfall")
 MAINTAINER_SIGNERS = Path(__file__).resolve().parent.parent / "maintainer-signers"
 REGULAR_FILE = "100644"
 

@@ -1,0 +1,12 @@
+object 42e8a3c14edc7a869fe6a45e9d1712a5e59bfea5
+type commit
+tag v0.1.0-rc.1
+tagger Pierre-Etienne Cherière <pecheriere@users.noreply.github.com> 1793763638 -0800
+
+v0.1.0-rc.1
+-----BEGIN SSH SIGNATURE-----
+U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgggvRwLhI6v3DBWq6wuSCNhNQ4L
+4SxNO6F8C6PYOatPAAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5
+AAAAQPVJaf88qq0fl+Pgj5nRuuRkq92qgNsD8wMSUQrHqOcKJdABxQ9FBc9fplIXtLSybw
+OFluNvh/iFm0HbWDVsNw0=
+-----END SSH SIGNATURE-----
