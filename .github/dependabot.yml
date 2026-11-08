@@ -1,0 +1,18 @@
+version: 2
+
+# The workflows' actions are this repository's only dependencies. Version
+# updates wait until a release is 7 days old, the age the pinning rule requires,
+# and minor and patch updates come grouped into one pull request.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci

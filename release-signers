@@ -1,0 +1,6 @@
+# Keys that sign warden's release manifests, in the format of ssh-keygen -Y verify -f
+# (see "ALLOWED SIGNERS" in ssh-keygen(1)). A copy of the warden-release keys in
+# https://github.com/pecheriere/warden/blob/main/docs/release-signers, kept here so
+# that a formula is checked against keys this repository's own review approved, not
+# against whatever the release's tag says. Change it in step with warden's list.
+pecheriere@users.noreply.github.com namespaces="warden-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5zA+J2lBK+qWdhVBz+3WiucLhgDfWn3Yw0JHZyIhBJ

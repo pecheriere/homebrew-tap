@@ -1,0 +1,69 @@
+name: ci
+
+# Checks the formula on every pull request: that it is exactly what
+# scripts/formula.py renders from the release's signed manifest, that Homebrew's
+# style and audit accept it, and that it installs and runs on each platform the
+# release ships for. A bump pull request from warden's homebrew workflow runs
+# this before the owner merges it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the formula script
+        run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
+      - name: Check the formula against the release's signed manifest
+        run: python3 -I scripts/formula.py check Formula/warden.rb
+
+  formula:
+    name: formula (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: macos-arm64, runner: macos-15}
+          - {platform: linux-amd64, runner: ubuntu-24.04}
+          - {platform: linux-arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Put Homebrew on the PATH
+        run: |
+          if ! command -v brew > /dev/null; then
+            echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+          fi
+      - name: Tap this checkout
+        run: |
+          brew update --quiet
+          brew --version
+          tap="$(brew --repository)/Library/Taps/pecheriere/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
+          brew trust --formula pecheriere/tap/warden
+      - name: Style and audit
+        run: |
+          brew style pecheriere/tap/warden
+          brew audit --strict --online pecheriere/tap/warden
+      - name: Install and test
+        run: |
+          brew install pecheriere/tap/warden
+          brew test pecheriere/tap/warden
+          warden --version
