@@ -35,11 +35,18 @@ refuses:
 
 - a file named landfall.rb, in any case, anywhere but Formula/landfall.rb, and
   any other Formula/**/landfall*.rb, which Homebrew could load instead;
+- an Aliases/ entry whose name or target is landfall, and a
+  formula_renames.json or tap_migrations.json that mentions landfall, through
+  which Homebrew could resolve landfall to another formula;
 - Formula/landfall.rb as anything but a regular file;
 - a change that drops the formula the base has;
 - a formula that differs from the base one without a strictly newer version,
   or whose version is below the highest the formula has ever had there;
 - and then anything check refuses.
+
+CI's scope check refuses any new file without the maintainer's signature, so
+what check-tree does not look for, such as an external command, cannot arrive
+in a bump either: the two together are the guarantee, not check-tree alone.
 
 It needs Python 3.11 or later, git, ssh-keygen and an authenticated gh, and
 nothing outside the standard library.
@@ -59,7 +66,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 REPO = "pecheriere/landfall"
-WORKFLOW = f"{REPO}/.github/workflows/release.yml"
+WORKFLOW = f"https://github.com/{REPO}/.github/workflows/release.yml"
 IDENTITY = "landfall-release"
 NAMESPACE = "git"
 SIGNERS = Path(__file__).resolve().parent.parent / "landfall-release-signers"
@@ -207,7 +214,9 @@ def attestation_command(path: Path, version: str, commit: str) -> list[str]:
         str(path),
         "--hostname=github.com",
         f"--repo={REPO}",
-        f"--signer-workflow={WORKFLOW}",
+        # The exact identity of the workflow run that signed it: release.yml at
+        # the release's tag, not a pattern that a longer file name could match.
+        f"--cert-identity={WORKFLOW}@refs/tags/v{version}",
         f"--source-ref=refs/tags/v{version}",
         f"--source-digest={commit}",
         "--deny-self-hosted-runners",
@@ -325,6 +334,48 @@ def stray_formulas(paths: list[str]) -> list[str]:
     return sorted(stray)
 
 
+# Files Homebrew reads to resolve a formula name to another formula.
+POINTER_FILES = ("formula_renames.json", "tap_migrations.json")
+
+
+def names_landfall(text: str) -> bool:
+    """Whether a name, path or tap reference ends in something called landfall."""
+    return text.strip().rsplit("/", 1)[-1].lower().startswith("landfall")
+
+
+def json_strings(data: object) -> list[str]:
+    """Every key and string value in a JSON document."""
+    if isinstance(data, str):
+        return [data]
+    if isinstance(data, dict):
+        return [string for key, value in data.items() for string in [key, *json_strings(value)]]
+    if isinstance(data, list):
+        return [string for item in data for string in json_strings(item)]
+    return []
+
+
+def stray_pointers(paths: list[str], read: Callable[[str], bytes]) -> list[str]:
+    """Files through which Homebrew could resolve landfall to something else.
+
+    That is an Aliases/ entry whose name or target is landfall, and a
+    formula_renames.json or tap_migrations.json that mentions landfall.
+    """
+    stray = []
+    for path in paths:
+        parts = path.split("/")
+        if parts[0] == "Aliases" and len(parts) > 1:
+            if names_landfall(parts[-1]) or names_landfall(read(path).decode("utf-8", "replace")):
+                stray.append(path)
+        elif path in POINTER_FILES:
+            try:
+                data = json.loads(read(path))
+            except ValueError as error:
+                raise LandfallError(f"{path} is not JSON, so it cannot be checked for landfall") from error
+            if any(names_landfall(string) for string in json_strings(data)):
+                stray.append(path)
+    return sorted(stray)
+
+
 def git(repository: Path, *args: str) -> bytes:
     return run(["git", "-C", str(repository), *args], f"git {args[0]}", env=GIT_ENV)
 
@@ -361,7 +412,9 @@ def history(repository: Path, revision: str, path: str = FORMULA) -> list[str]:
     if git(repository, "rev-parse", "--is-shallow-repository").strip() != b"false":
         raise LandfallError(f"{repository} is a shallow clone, so the formula's history is incomplete")
     versions = []
-    for commit in git(repository, "log", "--format=%H", revision, "--", path).decode().split():
+    # --full-history: without it, git skips a line of history that a merge
+    # undid, and with it the highest version that line had.
+    for commit in git(repository, "log", "--full-history", "--format=%H", revision, "--", path).decode().split():
         text = formula_at(repository, commit, path)
         if text is None:
             continue
@@ -400,7 +453,9 @@ def check_tree(
     """check-tree: the change's commit, read from git as data, against the base commit and its history."""
     commit = commit_of(change, change_revision)
     modes = tree_modes(change, commit)
-    stray = stray_formulas(list(modes))
+    stray = stray_formulas(list(modes)) + stray_pointers(
+        list(modes), lambda path: git(change, "show", f"{commit}:{path}")
+    )
     if stray:
         raise LandfallError(f"only {FORMULA} may hold landfall's formula, but the change also has {', '.join(stray)}")
     if "Formula" in modes:

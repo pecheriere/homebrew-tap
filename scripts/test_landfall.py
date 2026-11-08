@@ -285,7 +285,8 @@ class AttestationTest(unittest.TestCase):
                 "landfall.rb",
                 "--hostname=github.com",
                 "--repo=pecheriere/landfall",
-                "--signer-workflow=pecheriere/landfall/.github/workflows/release.yml",
+                "--cert-identity=https://github.com/pecheriere/landfall/.github/workflows/release.yml"
+                f"@refs/tags/v{VERSION}",
                 f"--source-ref=refs/tags/v{VERSION}",
                 f"--source-digest={COMMIT}",
                 "--deny-self-hosted-runners",

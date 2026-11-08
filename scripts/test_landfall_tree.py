@@ -99,6 +99,40 @@ class StrayFormulasTest(unittest.TestCase):
         self.assertEqual(landfall.stray_formulas(tracked.stdout.splitlines()), [])
 
 
+class StrayPointersTest(unittest.TestCase):
+    def test_finds_aliases_and_renames_that_mention_landfall(self) -> None:
+        files = {
+            "Aliases/landfall": b"../Formula/other.rb",
+            "Aliases/lf": b"../Formula/landfall.rb",
+            "Aliases/Landfall-pro": b"../Formula/x.rb",
+            "Aliases/wd": b"../Formula/warden.rb",
+            "formula_renames.json": b'{"old": "landfall"}',
+            "tap_migrations.json": b'{"landfall": "someone/tap"}',
+            "Formula/warden.rb": b"",
+            "README.md": b"landfall",
+        }
+        self.assertEqual(
+            landfall.stray_pointers(list(files), files.__getitem__),
+            ["Aliases/Landfall-pro", "Aliases/landfall", "Aliases/lf", "formula_renames.json", "tap_migrations.json"],
+        )
+
+    def test_finds_landfall_as_a_tap_reference_or_in_a_list(self) -> None:
+        for data in (b'{"warden": "pecheriere/tap/landfall"}', b'{"x": ["warden", "LANDFALL"]}'):
+            with self.subTest(data=data):
+                self.assertEqual(
+                    landfall.stray_pointers(["tap_migrations.json"], {"tap_migrations.json": data}.__getitem__),
+                    ["tap_migrations.json"],
+                )
+
+    def test_leaves_files_that_do_not_mention_landfall(self) -> None:
+        files = {"formula_renames.json": b'{"old": "warden"}', "Aliases/wd": b"../Formula/warden.rb"}
+        self.assertEqual(landfall.stray_pointers(list(files), files.__getitem__), [])
+
+    def test_refuses_a_json_file_it_cannot_read(self) -> None:
+        with self.assertRaisesRegex(landfall.LandfallError, "not JSON"):
+            landfall.stray_pointers(["formula_renames.json"], {"formula_renames.json": b"{"}.__getitem__)
+
+
 class JudgeTreeTest(unittest.TestCase):
     def test_refuses_to_delete_the_formula(self) -> None:
         with self.assertRaisesRegex(landfall.LandfallError, "deletes Formula/landfall.rb, which the base has"):
@@ -134,6 +168,21 @@ class CheckTreeTest(TempDirTest):
         self.assertEqual(landfall.formula_at(self.base.path, "HEAD~1"), formula("1.2.0"))
         self.assertIsNone(landfall.formula_at(self.base.path, "HEAD"))
 
+    def test_history_keeps_a_line_a_merge_undid(self) -> None:
+        # main went 1.0.0 then 1.4.0; a side branch went 1.0.0 then 1.2.0; the
+        # merge took the side's 1.2.0. Simplified history would drop 1.4.0.
+        repo = Repo(self.dir / "merged")
+        path = str(repo.path)
+        repo.commit({landfall.FORMULA: formula("1.0.0")})
+        repo.git("-C", path, "branch", "side")
+        repo.commit({landfall.FORMULA: formula("1.4.0")})
+        repo.git("-C", path, "checkout", "-q", "side")
+        repo.commit({landfall.FORMULA: formula("1.2.0")})
+        repo.git("-C", path, "checkout", "-q", "-")
+        repo.git("-C", path, "merge", "-q", "--no-edit", "-X", "theirs", "side")
+        self.assertEqual(landfall.formula_at(repo.path, "HEAD"), formula("1.2.0"))
+        self.assertEqual(landfall.highest(landfall.history(repo.path, "HEAD")), "1.4.0")
+
     def test_refuses_to_come_back_below_the_floor_after_a_deletion(self) -> None:
         self.change.commit({landfall.FORMULA: formula("1.1.0")})
         with self.assertRaisesRegex(landfall.LandfallError, "already been at 1.2.0"):
@@ -159,6 +208,16 @@ class CheckTreeTest(TempDirTest):
         self.change.commit({landfall.FORMULA: formula("1.3.0"), "Formula/l/landfall.rb": formula("9.0.0")})
         with self.assertRaisesRegex(landfall.LandfallError, "also has Formula/l/landfall.rb"):
             self.check_tree("HEAD~1")
+
+    def test_refuses_an_alias_to_landfall(self) -> None:
+        self.change.commit({landfall.FORMULA: formula("1.3.0")}, links={"Aliases/lf": "../Formula/landfall.rb"})
+        with self.assertRaisesRegex(landfall.LandfallError, "also has Aliases/lf"):
+            self.check_tree("HEAD~1")
+
+    def test_refuses_a_rename_to_landfall(self) -> None:
+        self.change.commit({"formula_renames.json": b'{"landfall": "other"}'})
+        with self.assertRaisesRegex(landfall.LandfallError, "also has formula_renames.json"):
+            self.check_tree("HEAD")
 
     def test_refuses_a_formula_that_is_a_symbolic_link(self) -> None:
         self.change.commit({"elsewhere.rb": formula("1.3.0")}, links={landfall.FORMULA: "../elsewhere.rb"})
