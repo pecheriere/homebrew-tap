@@ -1,10 +1,14 @@
 name: ci
 
 # Checks the formula on every pull request: that it is exactly what
-# scripts/formula.py renders from the release's signed manifest, that Homebrew's
-# style and audit accept it, and that it installs and runs on each platform the
-# release ships for. A bump pull request from warden's homebrew workflow runs
-# this before the owner merges it.
+# scripts/formula.py renders from the release's signed manifest, and no older than
+# main's, that Homebrew's style and audit accept it, and that it installs and runs
+# on each platform the release ships for. warden's homebrew workflow opens a bump
+# pull request with auto-merge on, so these required checks are what merges it.
+#
+# On a pull request the manifest check runs the script and release-signers from
+# main, not from the pull request, so that a pull request cannot loosen the check
+# it is judged by.
 
 on:
   pull_request:
@@ -23,10 +27,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
       - name: Test the formula script
         run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
       - name: Check the formula against the release's signed manifest
-        run: python3 -I scripts/formula.py check Formula/warden.rb
+        run: |
+          if [ -f base/scripts/formula.py ]; then
+            python3 -I base/scripts/formula.py check Formula/warden.rb base/Formula/warden.rb
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -e base/Formula ]; then
+            echo "::error::main has a formula but no scripts/formula.py to check it with"
+            exit 1
+          else
+            # A push to main, or the pull request that adds the script.
+            python3 -I scripts/formula.py check Formula/warden.rb
+          fi
 
   formula:
     name: formula (${{ matrix.platform }})
@@ -57,13 +76,13 @@ jobs:
           tap="$(brew --repository)/Library/Taps/pecheriere/homebrew-tap"
           mkdir -p "$(dirname "$tap")"
           ln -s "$GITHUB_WORKSPACE" "$tap"
-          brew trust --formula pecheriere/tap/warden
-      - name: Style and audit
-        run: |
-          brew style pecheriere/tap/warden
-          brew audit --strict --online pecheriere/tap/warden
+      # As the README says: install by full name, which also trusts the formula.
       - name: Install and test
         run: |
           brew install pecheriere/tap/warden
           brew test pecheriere/tap/warden
           warden --version
+      - name: Style and audit
+        run: |
+          brew style pecheriere/tap/warden
+          brew audit --strict --online pecheriere/tap/warden

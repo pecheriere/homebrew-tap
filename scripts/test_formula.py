@@ -40,7 +40,12 @@ class SignedFormulaTest(unittest.TestCase):
     def sign(self, data: bytes, namespace: str = formula.NAMESPACE) -> bytes:
         path = self.dir / "manifest"
         path.write_bytes(data)
-        subprocess.run(["ssh-keygen", "-q", "-Y", "sign", "-n", namespace, "-f", str(self.key), str(path)], check=True)
+        (self.dir / "manifest.sig").unlink(missing_ok=True)
+        subprocess.run(
+            ["ssh-keygen", "-q", "-Y", "sign", "-n", namespace, "-f", str(self.key), str(path)],
+            check=True,
+            stdin=subprocess.DEVNULL,
+        )
         return (self.dir / "manifest.sig").read_bytes()
 
     def served(self, manifest: bytes, signature: bytes) -> dict[str, bytes]:
@@ -78,6 +83,44 @@ class SignedFormulaTest(unittest.TestCase):
         with self.assertRaisesRegex(formula.FormulaError, "does not verify"):
             formula.signed_formula(VERSION, self.signers, self.served(manifest, signature).__getitem__)
 
+    def test_refuses_another_identity(self) -> None:
+        manifest = manifest_for(VERSION, SUMS)
+        signature = self.sign(manifest)
+        self.signers.write_text(self.signers.read_text().replace(formula.IDENTITY, "someone@example.com"))
+        with self.assertRaisesRegex(formula.FormulaError, "does not verify"):
+            formula.signed_formula(VERSION, self.signers, self.served(manifest, signature).__getitem__)
+
+    def signed_get(self):
+        manifest = manifest_for(VERSION, SUMS)
+        return self.served(manifest, self.sign(manifest)).__getitem__
+
+    def test_render_file_writes_the_formula(self) -> None:
+        path = self.dir / "warden.rb"
+        formula.render_file(VERSION, path, self.signers, self.signed_get())
+        self.assertEqual(formula.check_file(path, None, self.signers, self.signed_get()), VERSION)
+
+    def test_render_file_refuses_to_go_back(self) -> None:
+        path = self.dir / "warden.rb"
+        path.write_text(formula.render("1.10.0", SUMS))
+        with self.assertRaisesRegex(formula.FormulaError, "go back from warden 1.10.0 to 1.2.3"):
+            formula.render_file(VERSION, path, self.signers, self.signed_get())
+        self.assertIn("1.10.0", path.read_text())
+
+    def test_check_file_refuses_a_hand_edit(self) -> None:
+        path = self.dir / "warden.rb"
+        formula.render_file(VERSION, path, self.signers, self.signed_get())
+        path.write_text(path.read_text().replace('bin.install "warden"', 'bin.install "warden"\n    system "true"'))
+        with self.assertRaisesRegex(formula.FormulaError, "is not the formula"):
+            formula.check_file(path, None, self.signers, self.signed_get())
+
+    def test_check_file_refuses_to_go_back(self) -> None:
+        path = self.dir / "warden.rb"
+        formula.render_file(VERSION, path, self.signers, self.signed_get())
+        base = self.dir / "base.rb"
+        base.write_text(formula.render("1.3.0", SUMS))
+        with self.assertRaisesRegex(formula.FormulaError, "go back"):
+            formula.check_file(path, base, self.signers, self.signed_get())
+
     def test_refuses_a_bad_version(self) -> None:
         with self.assertRaisesRegex(formula.FormulaError, "not a release version"):
             formula.signed_formula("1.2.3/../x", self.signers, {}.__getitem__)
@@ -103,6 +146,12 @@ class ChecksumsTest(unittest.TestCase):
         manifest = manifest_for("1.2.4", SUMS)
         with self.assertRaisesRegex(formula.FormulaError, "no checksum"):
             formula.checksums(manifest, VERSION)
+
+
+class FetchTest(unittest.TestCase):
+    def test_refuses_plain_http(self) -> None:
+        with self.assertRaisesRegex(formula.FormulaError, "not https"):
+            formula.fetch("http://github.com/pecheriere/warden/releases/download/v1.2.3/x")
 
 
 class FormulaVersionTest(unittest.TestCase):

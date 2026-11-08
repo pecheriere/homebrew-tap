@@ -38,8 +38,11 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 - Every commit is signed off with `git commit -s`, as in warden: an agent adds one
   only under the maintainer's configured identity, for work the maintainer asked
   for. The bump commits warden's workflow makes carry none: a person has not
-  made them, and the maintainer's merge is what approves them. `main` takes
-  squash merges only, and commits must be signed.
+  made them, and the release they follow is what the maintainer approved.
+  `main` takes squash merges only, and commits must be signed.
+- A change to `scripts/formula.py`, `release-signers` or the workflows changes
+  what lets a bump merge by itself: only the maintainer merges one, after reading
+  it.
 - GitHub Actions are pinned to the full commit SHA of a release at least 7 days
   old.
 

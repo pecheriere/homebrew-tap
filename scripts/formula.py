@@ -2,7 +2,7 @@
 
 Usage:
   python3 -I scripts/formula.py render <version> <formula-file>
-  python3 -I scripts/formula.py check <formula-file>
+  python3 -I scripts/formula.py check <formula-file> [<base-formula-file>]
 
 Both download warden-<version>-SHA256SUMS and its .sig from the published
 release, and refuse to go on unless ssh-keygen verifies the signature against
@@ -11,8 +11,13 @@ that version. check reads the version from the formula's first URL, renders the
 formula again and fails unless the file is exactly that, so nothing but the
 version and the signed checksums can change in a bump.
 
+Neither goes back to an older release: render refuses a version older than the
+formula already in <formula-file>, and check one older than <base-formula-file>,
+the formula on the branch a pull request merges into.
+
 warden's homebrew workflow runs render to open a bump pull request, and this
-repository's CI runs check on every pull request. It needs Python 3.11 or later
+repository's CI runs check on every pull request, with this script and
+release-signers as they are on main. It needs Python 3.11 or later
 and ssh-keygen, and nothing outside the standard library.
 """
 
@@ -151,19 +156,46 @@ def formula_version(text: str) -> str:
     return match.group(1)
 
 
+def version_key(version: str) -> tuple[int, ...]:
+    if not VERSION.fullmatch(version):
+        raise FormulaError(f"not a release version: {version}")
+    return tuple(int(part) for part in version.split("."))
+
+
+def refuse_older(version: str, than: Path) -> None:
+    if not than.exists():
+        return
+    current = formula_version(than.read_text(encoding="utf-8"))
+    if version_key(version) < version_key(current):
+        raise FormulaError(f"refusing to go back from warden {current} to {version}")
+
+
+def render_file(version: str, path: Path, signers: Path, get: Callable[[str], bytes] = fetch) -> None:
+    refuse_older(version, path)
+    path.write_text(signed_formula(version, signers, get), encoding="utf-8")
+
+
+def check_file(path: Path, base: Path | None, signers: Path, get: Callable[[str], bytes] = fetch) -> str:
+    text = path.read_text(encoding="utf-8")
+    version = formula_version(text)
+    if base is not None:
+        refuse_older(version, base)
+    if text != signed_formula(version, signers, get):
+        raise FormulaError(
+            f"{path} is not the formula for {version}'s signed manifest: "
+            f"run python3 -I scripts/formula.py render {version} {path} and compare"
+        )
+    return version
+
+
 def main(argv: list[str]) -> int:
     try:
         if len(argv) == 3 and argv[0] == "render":
-            Path(argv[2]).write_text(signed_formula(argv[1], SIGNERS), encoding="utf-8")
+            render_file(argv[1], Path(argv[2]), SIGNERS)
             return 0
-        if len(argv) == 2 and argv[0] == "check":
-            text = Path(argv[1]).read_text(encoding="utf-8")
-            version = formula_version(text)
-            if text != signed_formula(version, SIGNERS):
-                raise FormulaError(
-                    f"{argv[1]} is not the formula for {version}'s signed manifest: "
-                    f"run python3 -I scripts/formula.py render {version} {argv[1]} and compare"
-                )
+        if len(argv) in (2, 3) and argv[0] == "check":
+            base = Path(argv[2]) if len(argv) == 3 else None
+            version = check_file(Path(argv[1]), base, SIGNERS)
             print(f"{argv[1]} matches the signed manifest of warden {version}")
             return 0
     except FormulaError as error:
