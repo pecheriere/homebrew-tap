@@ -113,6 +113,13 @@ class SignedFormulaTest(unittest.TestCase):
         with self.assertRaisesRegex(formula.FormulaError, "is not the formula"):
             formula.check_file(path, None, self.signers, self.signed_get())
 
+    def test_check_file_refuses_a_carriage_return(self) -> None:
+        path = self.dir / "warden.rb"
+        formula.render_file(VERSION, path, self.signers, self.signed_get())
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r", 1))
+        with self.assertRaisesRegex(formula.FormulaError, "is not the formula"):
+            formula.check_file(path, None, self.signers, self.signed_get())
+
     def test_check_file_refuses_to_go_back(self) -> None:
         path = self.dir / "warden.rb"
         formula.render_file(VERSION, path, self.signers, self.signed_get())

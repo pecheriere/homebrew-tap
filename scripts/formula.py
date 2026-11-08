@@ -172,15 +172,16 @@ def refuse_older(version: str, than: Path) -> None:
 
 def render_file(version: str, path: Path, signers: Path, get: Callable[[str], bytes] = fetch) -> None:
     refuse_older(version, path)
-    path.write_text(signed_formula(version, signers, get), encoding="utf-8")
+    path.write_bytes(signed_formula(version, signers, get).encode("utf-8"))
 
 
 def check_file(path: Path, base: Path | None, signers: Path, get: Callable[[str], bytes] = fetch) -> str:
-    text = path.read_text(encoding="utf-8")
-    version = formula_version(text)
+    # Bytes, not text: reading text would turn a lone carriage return into a newline.
+    data = path.read_bytes()
+    version = formula_version(data.decode("utf-8", errors="replace"))
     if base is not None:
         refuse_older(version, base)
-    if text != signed_formula(version, signers, get):
+    if data != signed_formula(version, signers, get).encode("utf-8"):
         raise FormulaError(
             f"{path} is not the formula for {version}'s signed manifest: "
             f"run python3 -I scripts/formula.py render {version} {path} and compare"

@@ -6,10 +6,13 @@ name: ci
 # on each platform the release ships for. warden's homebrew workflow opens a bump
 # pull request with auto-merge on, so these required checks are what merges it.
 #
-# The manifest check runs the script and release-signers from the commit being
-# built on, not from the change itself: the pull request's base, or for a push to
-# main the commit before it. So a change cannot loosen the check it is judged by,
-# and a change to the formula's template merges in two steps (see AGENTS.md).
+# `manifest` and `scope` run the scripts and key lists from the commit being built
+# on, not from the change itself: the pull request's base, or for a push to main the
+# commit before it. They read the change only as data, and run none of its code, so a
+# change cannot loosen the checks it is judged by. A change to the formula's template
+# therefore merges in two steps (see AGENTS.md). `scope` lets a pull request that
+# does more than bump a formula merge only if the maintainer signed every commit.
+# The script's own tests run the change's code, so they have a job of their own.
 
 on:
   pull_request:
@@ -19,7 +22,7 @@ on:
 permissions: {}
 
 jobs:
-  manifest:
+  tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -28,23 +31,67 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Test the scripts
+        run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
+
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: change
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           path: base
           persist-credentials: false
-      - name: Test the formula script
-        run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
       - name: Check the formula against the release's signed manifest
         run: |
           if [ -f base/scripts/formula.py ] && [ -f base/Formula/warden.rb ]; then
-            python3 -I base/scripts/formula.py check Formula/warden.rb base/Formula/warden.rb
+            python3 -I base/scripts/formula.py check change/Formula/warden.rb base/Formula/warden.rb
           elif [ -e base/scripts ] || [ -e base/Formula ]; then
             echo "::error::the base commit has only part of the formula and its script: refusing to check without them"
             exit 1
           else
             # Only the change that adds both to a tap that had neither.
-            python3 -I scripts/formula.py check Formula/warden.rb
+            python3 -I change/scripts/formula.py check change/Formula/warden.rb
+          fi
+
+  scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: change
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - name: Allow more than a formula bump only with the maintainer's signatures
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -f base/scripts/scope.py ] && [ -f base/maintainer-signers ]; then
+            python3 -I base/scripts/scope.py change "$BASE" "$HEAD"
+          elif [ -e base/scripts ] || [ -e base/Formula ]; then
+            echo "::error::the base commit has no scope check: refusing to merge without it"
+            exit 1
+          else
+            # Only the change that adds it to a tap that had nothing to protect.
+            python3 -I change/scripts/scope.py change "$BASE" "$HEAD"
           fi
 
   formula:

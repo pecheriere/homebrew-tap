@@ -16,6 +16,8 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 | `Formula/warden.rb` | the formula, written by `scripts/formula.py render`; never edit it by hand |
 | `scripts/formula.py` | renders the formula from a release's signed manifest, or checks it; warden's `homebrew` workflow runs it too |
 | `release-signers` | the warden-release keys the manifest must be signed with, a copy of those in warden's `docs/release-signers` |
+| `scripts/scope.py` | CI's `scope` check: a pull request that does more than bump a formula in its `FORMULAE` needs every commit signed by a key in `maintainer-signers` |
+| `maintainer-signers` | the maintainer's commit keys |
 
 ## Changes
 
@@ -32,6 +34,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
   ```sh
   python3 -I -m unittest discover -s scripts -p 'test_*.py'
   python3 -I scripts/formula.py check Formula/warden.rb
+  python3 -I scripts/scope.py . origin/main HEAD
   brew style pecheriere/tap/warden
   brew audit --strict --online pecheriere/tap/warden
   uvx zizmor@1.31.1 .   # when a workflow or the Dependabot config changes
@@ -42,9 +45,12 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
   for. The bump commits warden's workflow makes carry none: a person has not
   made them, and the release they follow is what the maintainer approved.
   `main` takes squash merges only, and commits must be signed.
-- A change to `scripts/formula.py`, `release-signers` or the workflows changes
-  what lets a bump merge by itself: only the maintainer merges one, after reading
-  it.
+- Anything but a formula bump needs every commit signed by a key in
+  `maintainer-signers`, or `scope` fails. An agent commits with `git commit -s`
+  under the maintainer's configured identity and signing key, as in warden, and
+  only for work the maintainer asked for. A change to `scripts/`,
+  `release-signers`, `maintainer-signers` or the workflows changes what lets a bump
+  merge by itself: only the maintainer merges one, after reading it.
 - GitHub Actions are pinned to the full commit SHA of a release at least 7 days
   old.
 

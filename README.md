@@ -32,10 +32,16 @@ the archive Homebrew downloaded is in `brew --cache pecheriere/tap/warden`.
    the step a person takes.
 2. warden's `homebrew` workflow renders the formula with `scripts/formula.py` and
    opens a pull request here, with auto-merge on. Its token can write to this
-   repository only, and it can be used only from a workflow run for a release tag.
+   repository only, and warden's workflows can use it only in a run for a release
+   tag.
 3. CI checks the formula against the signed manifest, with the script and keys
    from `main`, and installs and tests it on each platform. The pull request
    merges when every check passes.
+
+Only a change to the formula merges that way. Any other change, including a new or
+moved formula file, merges only if the maintainer signed each of its commits with a
+key in [`maintainer-signers`](maintainer-signers): CI's `scope` check refuses it
+otherwise.
 
 ## License
 
