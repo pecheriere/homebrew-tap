@@ -17,8 +17,10 @@ name: bump
 #
 # Both jobs are a matrix over the formulae, so that one project's trouble never
 # holds up the other's bump: each `render` leg uploads its formula as an
-# artifact named after it, only if it changed, and the matching `propose` leg
-# downloads that one alone and stops when there is none.
+# artifact named after it, only if it changed. `plan`, with no secret, lists
+# those artifacts, and `propose` runs a leg for each, so it enters the
+# environment only when there is something to propose. Each leg downloads its
+# own artifact alone and stops if there is none.
 #
 # HOMEBREW_TAP_TOKEN, a secret of the homebrew-bump environment, which only main
 # can use, is a fine-grained token limited to this repository, with read and write
@@ -106,21 +108,62 @@ jobs:
           path: ${{ runner.temp }}/formula
           retention-days: 1
 
-  propose:
+  plan:
     needs: render
-    # Each leg runs whatever the other formula's render did.
+    # Runs whatever each formula's render leg did, so one's failure does not
+    # hold up the other's bump.
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read # to list this run's artifacts
+    outputs:
+      formulae: ${{ steps.list.outputs.formulae }}
+    steps:
+      - name: List the formulae this run rendered a change for
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REPO" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ && "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::unexpected repository or run id"
+            exit 1
+          fi
+          names=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[].name')
+          formulae=()
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if ! [[ "$name" =~ ^formula-(warden|landfall)$ ]]; then
+              echo "::error::this run has an artifact render does not make: $name"
+              exit 1
+            fi
+            formulae+=("${name#formula-}")
+          done <<< "$names"
+          json=$(jq -cn '$ARGS.positional | unique' --args "${formulae[@]}")
+          echo "To propose: $json"
+          echo "formulae=$json" >> "$GITHUB_OUTPUT"
+
+  propose:
+    needs: plan
+    # !cancelled(), so that a failed render leg of the other formula does not
+    # skip this one; an empty or missing list skips the job.
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main'
+      && needs.plan.outputs.formulae != '' && needs.plan.outputs.formulae != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        formula: [warden, landfall]
+        formula: ${{ fromJSON(needs.plan.outputs.formulae) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: homebrew-bump
     permissions: {}
     steps:
-      # A pattern, not a name: it matches nothing, rather than failing, when
-      # this formula's render leg had nothing to propose or failed.
+      # A second guard after plan: a pattern, not a name, matches nothing
+      # rather than failing when there is no artifact for this formula.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: formula-${{ matrix.formula }}
