@@ -124,6 +124,19 @@ class StrayPointersTest(unittest.TestCase):
                     ["tap_migrations.json"],
                 )
 
+    def test_matches_the_paths_in_any_case(self) -> None:
+        files = {
+            "aliases/lf": b"../Formula/landfall.rb",
+            "ALIASES/landfall": b"x",
+            "Formula_Renames.json": b'{"old": "landfall"}',
+            "TAP_MIGRATIONS.JSON": b'{"landfall": "someone/tap"}',
+            "aliases.txt": b"landfall",
+        }
+        self.assertEqual(
+            landfall.stray_pointers(list(files), files.__getitem__),
+            ["ALIASES/landfall", "Formula_Renames.json", "TAP_MIGRATIONS.JSON", "aliases/lf"],
+        )
+
     def test_leaves_files_that_do_not_mention_landfall(self) -> None:
         files = {"formula_renames.json": b'{"old": "warden"}', "Aliases/wd": b"../Formula/warden.rb"}
         self.assertEqual(landfall.stray_pointers(list(files), files.__getitem__), [])

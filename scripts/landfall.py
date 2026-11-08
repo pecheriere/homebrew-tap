@@ -366,11 +366,13 @@ def stray_pointers(paths: list[str], read: Callable[[str], bytes]) -> list[str]:
     """
     stray = []
     for path in paths:
-        parts = path.split("/")
-        if parts[0] == "Aliases" and len(parts) > 1:
+        # Casefolded, because Homebrew on a case-insensitive disk reads
+        # aliases/ or Formula_Renames.json as well.
+        parts = path.casefold().split("/")
+        if parts[0] == "aliases" and len(parts) > 1:
             if names_landfall(parts[-1]) or names_landfall(read(path).decode("utf-8", "replace")):
                 stray.append(path)
-        elif path in POINTER_FILES:
+        elif path.casefold() in POINTER_FILES:
             try:
                 data = json.loads(read(path))
             except ValueError as error:
