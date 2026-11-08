@@ -197,9 +197,24 @@ jobs:
           # 404 means there is no such branch; anything else but success is an error.
           status=$(gh api "repos/$REPO/branches/$branch" --include 2> /dev/null | awk 'NR == 1 { print $2 }' || true)
           if [ "$status" = 200 ]; then
-            open=$(gh pr list --repo "$REPO" --head "$branch" --state open --json url --jq '.[0].url // ""')
+            open=$(gh pr list --repo "$REPO" --head "$branch" --state open --json number --jq '.[0].number // ""')
             if [ -n "$open" ]; then
-              echo "$NAME $version is already proposed: $open"
+              if ! [[ "$open" =~ ^[0-9]+$ ]]; then
+                echo "::error::unexpected pull request number for $branch: $open"
+                exit 1
+              fi
+              echo "$NAME $version is already proposed in #$open; bringing it up to date with main."
+              # main requires branches to be up to date, so a bump pull request
+              # left behind by another merge would wait forever. update-branch
+              # merges main into it; that merge commit carries GitHub's
+              # signature, not the maintainer's, but scope still passes it,
+              # because the change against the new base is still only the
+              # formula. Already up to date is fine; anything else is a warning.
+              if ! out=$(gh pr update-branch "$open" --repo "$REPO" 2>&1); then
+                echo "::warning::could not bring #$open up to date with main: $out"
+              else
+                echo "$out"
+              fi
             else
               echo "::warning::branch $branch exists but has no open pull request, so $NAME $version is not proposed: open one from it, or delete the branch and rerun this workflow"
             fi
