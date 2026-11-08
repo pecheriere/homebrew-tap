@@ -42,17 +42,17 @@ and GitHub's build provenance attestation shows that landfall's release workflow
 built the file, on GitHub's runners, from the commit that tag names. A stolen
 GitHub token could run landfall's release workflow, but it could not sign the tag.
 CI also refuses a landfall version older than the formula it replaces or than any
-landfall version this tap has had, and any other file that could pass for
-landfall's formula.
+landfall version this tap has had, and another file through which Homebrew could
+take something else for landfall's formula. That check and `scope`, below,
+together keep anything but the verified formula out of a bump.
 
 ## How a release gets here
 
 1. The maintainer publishes a release: warden's with its signed manifest,
    landfall's from a signed tag. That is the step a person takes.
-2. A workflow writes the formula with this repository's scripts and opens a pull
-   request here, with auto-merge on: for warden, warden's `homebrew` workflow; for
-   both, this repository's hourly `bump` workflow, which reads each project's
-   latest release. Their tokens can write to this repository only.
+2. This repository's hourly `bump` workflow reads each project's latest release,
+   writes the formula with this repository's scripts and opens a pull request
+   here, with auto-merge on. Its token can write to this repository only.
 3. CI checks the formula with the scripts and keys from `main`, and installs and
    tests it on each platform. The pull request merges when every required check
    passes. Nobody reviews it first: the checks are the gate.

@@ -24,9 +24,10 @@ name: ci
 # The landfall jobs do the same for Formula/landfall.rb: it must be byte for byte
 # the formula a stable landfall release ships, behind its signed tag and its build
 # provenance attestation, never older than the formula it replaces or than any
-# landfall version main has had, and the only file that could pass for landfall's
-# formula. Until the first stable release brings it, there is nothing to check, and
-# the jobs pass so that their checks still report.
+# landfall version main has had, with no other file through which Homebrew could
+# take something else for it; `scope` keeps out any other new file. Until the
+# first stable release brings it, there is nothing to check, and the jobs pass so
+# that their checks still report.
 
 on:
   # Only pull requests into main, rerun when one is edited, so that checks that

@@ -14,7 +14,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 | Path | What |
 |---|---|
 | `Formula/warden.rb` | the formula, written by `scripts/formula.py render`; never edit it by hand |
-| `scripts/formula.py` | renders the formula from a release's signed manifest, or checks it; warden's `homebrew` workflow runs it too |
+| `scripts/formula.py` | renders the formula from a release's signed manifest, or checks it; the `bump` workflow runs it too |
 | `release-signers` | the warden-release keys the manifest must be signed with, a copy of those in warden's `docs/release-signers` |
 | `scripts/scope.py` | CI's `scope` check: a pull request that does more than bump a formula in its `FORMULAE` needs every commit signed by a key in `maintainer-signers` |
 | `maintainer-signers` | the maintainer's commit keys |
@@ -29,8 +29,8 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 - A change to the formula's shape goes in `TEMPLATE` in `scripts/formula.py`, in
   two pull requests, because CI checks the formula with the script from the base
   commit: first the script alone, then `python3 -I scripts/formula.py render
-  <version> Formula/warden.rb`. warden's workflow checks out `main`, so the next
-  bump uses the new shape anyway.
+  <version> Formula/warden.rb`. `bump` checks out `main`, so the next bump uses the
+  new shape anyway.
 - When warden's release key changes, update `release-signers` in the same way as
   warden's list: add the new key, and keep the old one only while a formula still
   needs it.
@@ -50,14 +50,18 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
   file outside any git repository.
 - CI's `landfall-manifest` runs `scripts/landfall.py check-tree` and
   `landfall-release-signers` from the base commit, as `manifest` does for warden,
-  and reads the change from git as data. It refuses any other file that could pass
-  for landfall's formula (`landfall.rb` in any case anywhere else, or
-  `Formula/**/landfall*.rb`), a change that deletes the formula (the maintainer
+  and reads the change from git as data. It refuses another file Homebrew could
+  take for landfall's formula (`landfall.rb` in any case anywhere else,
+  `Formula/**/landfall*.rb`, an `Aliases/` entry named or pointing at landfall, or a
+  `formula_renames.json` or `tap_migrations.json` that mentions it), a change that
+  deletes the formula (the maintainer
   merges that by hand if it is meant), a changed formula that is not strictly newer
   than the one it replaces, and a version below the highest the formula has had on
   `main`. The change's own script runs only when the base has no part of landfall's
   check, which is the pull request that adds it; a base with some of it but not all
-  fails.
+  fails. `check-tree` and `scope` together are the guarantee: `scope` refuses any
+  new file without the maintainer's signature, which covers what `check-tree` does
+  not look for, such as an external command.
 - Once `Formula/landfall.rb` exists, every pull request, warden's bumps included,
   re-verifies it over the network: if landfall's release, its asset or its
   attestation goes away, or GitHub's API is down, `landfall-manifest` fails there.
@@ -75,7 +79,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 
 - Every commit is signed off with `git commit -s`, as in warden: an agent adds one
   only under the maintainer's configured identity, for work the maintainer asked
-  for. The bump commits warden's workflow and `bump` make carry none: a person has not
+  for. The bump commits `bump` makes carry none: a person has not
   made them, and the release they follow is what the maintainer approved.
   `main` takes squash merges only, and commits must be signed.
 - Anything but a formula bump needs every commit signed by a key in

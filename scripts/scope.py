@@ -8,7 +8,7 @@ by the manifest check and passes here. Any other change, such as another file,
 a new, deleted or renamed file, a symbolic link or a second formula elsewhere
 under Formula/, passes only if every commit in the pull request carries a good
 SSH signature from a key in maintainer-signers, the maintainer's commit keys.
-Commits that warden's workflow makes through the API carry GitHub's signature
+Commits that the bump workflow makes through the API carry GitHub's signature
 instead, so the workflow's token can bump a formula and do nothing else.
 
 CI runs this script, and maintainer-signers, as they are on the pull request's
@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The formulae warden's and other projects' workflows may bump on their own.
+# The formulae the bump workflow may bump on its own.
 FORMULAE = ("warden", "landfall")
 MAINTAINER_SIGNERS = Path(__file__).resolve().parent.parent / "maintainer-signers"
 REGULAR_FILE = "100644"
