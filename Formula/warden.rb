@@ -1,5 +1,5 @@
-# Written by warden's homebrew workflow for each release, from the release's
-# signed manifest: https://github.com/pecheriere/warden/blob/main/.github/workflows/homebrew.yml
+# Written by this tap's bump workflow for each warden release, from the release's
+# signed manifest: https://github.com/pecheriere/homebrew-tap/blob/main/.github/workflows/bump.yml
 # This repository's CI checks every checksum here against that manifest.
 class Warden < Formula
   desc "Command-line client for the warden approval broker"
