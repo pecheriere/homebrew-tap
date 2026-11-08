@@ -11,7 +11,8 @@ name: bump
 #
 # `propose` opens a pull request for the formula if it changed, with auto-merge
 # on. It runs nothing from this repository, uses no checkout, and reads the
-# formula from `render` only as data. CI's required checks verify the formula
+# formula from `render` only as data. It builds the branch on main as the API
+# reports it, and stops if main moved since `render` read it. CI's required checks verify the formula
 # again, with main's scripts and keys, and install it on each platform, so the
 # pull request merges only if they pass.
 #
@@ -207,14 +208,27 @@ jobs:
             echo "::error::cannot check for a branch $branch (HTTP ${status:-none}): is HOMEBREW_TAP_TOKEN valid?"
             exit 1
           fi
+          # The branch starts from main as the API reports it, never from a commit
+          # the artifact names; and only if main is still the commit render built
+          # on, with the same formula, so a render of a stale main stops here.
+          main_commit=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
+          main_blob=$(gh api "repos/$REPO/contents/Formula/$NAME.rb?ref=$main_commit" --jq .sha)
+          if ! [[ "$main_commit" =~ $sha && "$main_blob" =~ $sha ]]; then
+            echo "::error::cannot read main's commit and Formula/$NAME.rb from the API"
+            exit 1
+          fi
+          if [ "$main_commit" != "$base_commit" ] || [ "$main_blob" != "$base_blob" ]; then
+            echo "::error::main moved since render read it ($base_commit, now $main_commit), so $NAME $version is not proposed: the next run renders from the new main"
+            exit 1
+          fi
           # An assignment, so that set -e stops the run if base64 fails; inside
           # the gh arguments, its failure would go unnoticed.
           content=$(base64 -w0 formula/formula.rb)
-          gh api "repos/$REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base_commit" > /dev/null
+          gh api "repos/$REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$main_commit" > /dev/null
           gh api -X PUT "repos/$REPO/contents/Formula/$NAME.rb" \
             -f "message=$NAME $version" \
             -f "content=$content" \
-            -f "sha=$base_blob" \
+            -f "sha=$main_blob" \
             -f "branch=$branch" > /dev/null
           url=$(gh pr create --repo "$REPO" --base main --head "$branch" \
             --title "$NAME $version" \
