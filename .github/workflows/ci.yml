@@ -198,11 +198,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # On a pull request, a formula identical to the base's is not verified
+          # again over the network; the offline checks still run. A push to main
+          # always verifies it in full.
+          mode=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then mode=(--offline-if-unchanged); fi
           if [ -f base/scripts/landfall.py ] && [ -f base/landfall-release-signers ]; then
-            python3 -I base/scripts/landfall.py check-tree change HEAD base HEAD
+            python3 -I base/scripts/landfall.py check-tree "${mode[@]}" change HEAD base HEAD
           elif ! [ -e base/scripts/landfall.py ] && ! [ -e base/landfall-release-signers ] \
               && ! [ -e base/Formula/landfall.rb ]; then
-            python3 -I change/scripts/landfall.py check-tree change HEAD base HEAD
+            python3 -I change/scripts/landfall.py check-tree "${mode[@]}" change HEAD base HEAD
           else
             echo "::error::the base commit has part of landfall's check but not all of it"
             exit 1

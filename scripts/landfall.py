@@ -3,7 +3,7 @@
 Usage:
   python3 -I scripts/landfall.py fetch [--allow-prerelease] <version> <formula-file>
   python3 -I scripts/landfall.py check <formula-file>
-  python3 -I scripts/landfall.py check-tree <change-repo> <change-rev> <base-repo> <base-rev>
+  python3 -I scripts/landfall.py check-tree [--offline-if-unchanged] <change-repo> <change-rev> <base-repo> <base-rev>
 
 landfall's release workflow writes the finished formula and attaches it to the
 release as landfall.rb, with a build provenance attestation. Both commands
@@ -43,6 +43,10 @@ refuses:
 - a formula that differs from the base one without a strictly newer version,
   or whose version is below the highest the formula has ever had there;
 - and then anything check refuses.
+
+With --offline-if-unchanged, which CI passes on a pull request, a formula byte
+for byte the base's passes without the network checks: the base's was verified
+when it merged. The checks above still run. A push to main checks it in full.
 
 CI's scope check refuses any new file without the maintainer's signature, so
 what check-tree does not look for, such as an external command, cannot arrive
@@ -430,8 +434,15 @@ def judge_tree(
     base: bytes | None,
     floor: str | None,
     check_formula: Callable[[bytes, bytes | None, str | None], str] = check,
+    offline_if_unchanged: bool = False,
 ) -> str:
-    """What check-tree concludes, from the change's formula, the base one and the floor."""
+    """What check-tree concludes, from the change's formula, the base one and the floor.
+
+    With offline_if_unchanged, a formula identical to the base's is not verified
+    again over the network.
+    """
+    if offline_if_unchanged and head is not None and head == base:
+        return f"{FORMULA} is unchanged from the base, which was verified when it merged: not verified again"
     if head is None:
         if base is not None:
             raise LandfallError(
@@ -449,6 +460,7 @@ def check_tree(
     base: Path,
     base_revision: str,
     check_formula: Callable[[bytes, bytes | None, str | None], str] = check,
+    offline_if_unchanged: bool = False,
 ) -> str:
     """check-tree: the change's commit, read from git as data, against the base commit and its history."""
     commit = commit_of(change, change_revision)
@@ -465,7 +477,9 @@ def check_tree(
         raise LandfallError(f"{FORMULA} is not a regular file (mode {mode})")
     head = git(change, "show", f"{commit}:{FORMULA}") if mode else None
     base_commit = commit_of(base, base_revision)
-    return judge_tree(head, formula_at(base, base_commit), highest(history(base, base_commit)), check_formula)
+    base_formula = formula_at(base, base_commit)
+    floor = highest(history(base, base_commit))
+    return judge_tree(head, base_formula, floor, check_formula, offline_if_unchanged)
 
 
 def work_tree(path: Path) -> Path | None:
@@ -534,8 +548,11 @@ def main(argv: list[str]) -> int:
             version = check(read(argv[1]))
             print(f"{argv[1]} is landfall {version}'s verified formula")
             return 0
-        if argv[:1] == ["check-tree"] and len(argv) == 5:
-            print(check_tree(Path(argv[1]), argv[2], Path(argv[3]), argv[4]))
+        offline = argv[1:2] == ["--offline-if-unchanged"]
+        tree_args = argv[1 + offline :]
+        if argv[:1] == ["check-tree"] and len(tree_args) == 4:
+            change, change_revision, base, base_revision = tree_args
+            print(check_tree(Path(change), change_revision, Path(base), base_revision, offline_if_unchanged=offline))
             return 0
     except LandfallError as error:
         print(f"error: {error}", file=sys.stderr)

@@ -143,6 +143,22 @@ class JudgeTreeTest(unittest.TestCase):
         self.assertIn("nothing to check", landfall.judge_tree(None, None, "1.2.3", checked))
         self.assertEqual(checked.calls, [])
 
+    def test_unchanged_formula_skips_verification_only_when_asked(self) -> None:
+        checked = Checked()
+        message = landfall.judge_tree(formula("1.2.3"), formula("1.2.3"), "1.2.3", checked, offline_if_unchanged=True)
+        self.assertIn("unchanged from the base", message)
+        self.assertEqual(checked.calls, [])
+        landfall.judge_tree(formula("1.2.3"), formula("1.2.3"), "1.2.3", checked)
+        self.assertEqual(checked.calls, [(formula("1.2.3"), formula("1.2.3"), "1.2.3")])
+
+    def test_offline_if_unchanged_still_checks_a_changed_formula_and_a_deletion(self) -> None:
+        checked = Checked()
+        landfall.judge_tree(formula("1.3.0"), formula("1.2.3"), "1.2.3", checked, offline_if_unchanged=True)
+        self.assertEqual(checked.calls, [(formula("1.3.0"), formula("1.2.3"), "1.2.3")])
+        with self.assertRaisesRegex(landfall.LandfallError, "deletes"):
+            landfall.judge_tree(None, formula("1.2.3"), "1.2.3", checked, offline_if_unchanged=True)
+        self.assertIn("nothing to check", landfall.judge_tree(None, None, None, checked, offline_if_unchanged=True))
+
     def test_checks_the_formula_with_base_and_floor(self) -> None:
         checked = Checked()
         message = landfall.judge_tree(formula("1.3.0"), formula("1.2.3"), "1.2.3", checked)
@@ -194,6 +210,16 @@ class CheckTreeTest(TempDirTest):
         checked = Checked()
         self.check_tree("HEAD~1", checked)
         self.assertEqual(checked.calls, [(formula("1.3.0"), formula("1.2.0"), "1.2.0")])
+
+    def test_offline_if_unchanged_keeps_the_offline_checks(self) -> None:
+        self.change.commit({landfall.FORMULA: formula("1.2.0")})
+        checked = Checked()
+        message = landfall.check_tree(self.change.path, "HEAD", self.base.path, "HEAD~1", checked, True)
+        self.assertIn("unchanged from the base", message)
+        self.assertEqual(checked.calls, [])
+        self.change.commit({"Formula/l/landfall.rb": formula("9.0.0")})
+        with self.assertRaisesRegex(landfall.LandfallError, "also has Formula/l/landfall.rb"):
+            landfall.check_tree(self.change.path, "HEAD", self.base.path, "HEAD~1", checked, True)
 
     def test_refuses_a_deletion(self) -> None:
         self.change.commit({"README.md": b"readme\n"})
@@ -351,6 +377,15 @@ class MainTest(TempDirTest):
             self.assertEqual(self.main("fetch", "--allow-prerelease", "1.2.3-rc.1", str(out)), 0)
         self.assertEqual(verified.calls, [("1.2.3-rc.1", "True")])
 
+    def test_check_tree_passes_offline_if_unchanged(self) -> None:
+        with mock.patch.object(landfall, "check_tree", return_value="ok") as check_tree:
+            self.assertEqual(self.main("check-tree", "--offline-if-unchanged", "c", "HEAD", "b", "HEAD"), 0)
+            self.assertEqual(self.main("check-tree", "c", "HEAD", "b", "HEAD"), 0)
+        self.assertEqual(
+            [call.kwargs["offline_if_unchanged"] for call in check_tree.call_args_list],
+            [True, False],
+        )
+
     def test_usage(self) -> None:
         for argv in (
             ["fetch", "1.2.3"],
@@ -358,6 +393,7 @@ class MainTest(TempDirTest):
             ["check", "--base", "", "landfall.rb"],
             ["check-tree", "change", "HEAD", "base"],
             ["check-tree", "--allow-prerelease", "change", "HEAD", "base", "HEAD"],
+            ["check-tree", "--offline-if-unchanged", "change", "HEAD", "base"],
         ):
             with self.subTest(argv=argv), mock.patch.object(landfall, "verified_formula") as verified:
                 self.assertEqual(self.main(*argv), 2)
