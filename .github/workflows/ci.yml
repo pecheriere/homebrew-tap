@@ -1,0 +1,160 @@
+name: ci
+
+# Checks the formula on every pull request: that it is exactly what
+# scripts/formula.py renders from the release's signed manifest, and no older than
+# main's, that Homebrew's style and audit accept it, and that it installs and runs
+# on each platform the release ships for. warden's homebrew workflow opens a bump
+# pull request with auto-merge on, so these required checks are what merges it.
+#
+# `manifest` and `scope` run the scripts and key lists from the commit being built
+# on, not from the change itself: the pull request's base, or for a push to main the
+# commit before it. They read the change only as data, and run none of its code, so a
+# change cannot loosen the checks it is judged by. A change to the formula's template
+# therefore merges in two steps (see AGENTS.md). `scope` lets a pull request that
+# does more than bump a formula merge only if the maintainer signed every commit.
+# The script's own tests run the change's code, so they have a job of their own.
+#
+# Pull requests into other branches run nothing, and an edit reruns everything: a
+# pull request built and checked against another branch and then pointed at main
+# would otherwise carry that branch's results. `manifest` and `scope` also refuse a
+# pull request whose base is not main. The fallback to the change's own scripts is
+# for the pull request that adds them alone, onto the first commit, which has
+# nothing to protect.
+
+on:
+  # Only pull requests into main, rerun when one is edited, so that checks that
+  # passed against another base never count for main.
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions: {}
+
+env:
+  # The tap's first commit, before it had a formula or scripts.
+  FIRST_COMMIT: 1602cb4a28899d81063bbaeabc921d38ee091310
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the scripts
+        run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
+
+  manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a base other than main
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+        run: |
+          echo "::error::this pull request's base is not main"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: change
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          path: base
+          persist-credentials: false
+      - name: Check the formula against the release's signed manifest
+        run: |
+          # The committed formula, not the checked-out file, which attributes could change.
+          git -C change show HEAD:Formula/warden.rb > "$RUNNER_TEMP/warden.rb"
+          if [ -f base/scripts/formula.py ] && [ -f base/Formula/warden.rb ]; then
+            python3 -I base/scripts/formula.py check "$RUNNER_TEMP/warden.rb" base/Formula/warden.rb
+          elif [ "$(git -C base rev-parse HEAD)" = "$FIRST_COMMIT" ]; then
+            python3 -I change/scripts/formula.py check "$RUNNER_TEMP/warden.rb"
+          else
+            echo "::error::the base commit has no formula and script to check with"
+            exit 1
+          fi
+
+  scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a base other than main
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+        run: |
+          echo "::error::this pull request's base is not main"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: change
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - name: Allow more than a formula bump only with the maintainer's signatures
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -f base/scripts/scope.py ] && [ -f base/maintainer-signers ]; then
+            python3 -I base/scripts/scope.py change "$BASE" "$HEAD"
+          elif [ "$BASE" = "$FIRST_COMMIT" ]; then
+            python3 -I change/scripts/scope.py change "$BASE" "$HEAD"
+          else
+            echo "::error::the base commit has no scope check: refusing to merge without it"
+            exit 1
+          fi
+
+  formula:
+    name: formula (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: macos-arm64, runner: macos-15}
+          - {platform: linux-amd64, runner: ubuntu-24.04}
+          - {platform: linux-arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Put Homebrew on the PATH
+        run: |
+          if ! command -v brew > /dev/null; then
+            echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+          fi
+      - name: Tap this checkout
+        run: |
+          brew update --quiet
+          brew --version
+          tap="$(brew --repository)/Library/Taps/pecheriere/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
+      # As the README says: install by full name, which also trusts the formula.
+      - name: Install and test
+        run: |
+          brew install pecheriere/tap/warden
+          brew test pecheriere/tap/warden
+          warden --version
+      - name: Style and audit
+        run: |
+          brew style pecheriere/tap/warden
+          brew audit --strict --online pecheriere/tap/warden

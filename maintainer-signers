@@ -1,0 +1,5 @@
+# The maintainer's commit keys, in the format of ssh-keygen -Y verify -f (see
+# "ALLOWED SIGNERS" in ssh-keygen(1)). scripts/scope.py lets a pull request that
+# changes more than a formula merge only if each of its commits is signed by one of
+# these. Change it only in a pull request signed by a key already listed.
+pecheriere@users.noreply.github.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5zA+J2lBK+qWdhVBz+3WiucLhgDfWn3Yw0JHZyIhBJ
