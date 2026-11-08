@@ -37,7 +37,9 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 
 - Every commit is signed off with `git commit -s`, as in warden: an agent adds one
   only under the maintainer's configured identity, for work the maintainer asked
-  for. `main` takes squash merges only, and commits must be signed.
+  for. The bump commits warden's workflow makes carry none: a person has not
+  made them, and the maintainer's merge is what approves them. `main` takes
+  squash merges only, and commits must be signed.
 - GitHub Actions are pinned to the full commit SHA of a release at least 7 days
   old.
 
