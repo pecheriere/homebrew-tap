@@ -20,6 +20,14 @@ name: ci
 # pull request whose base is not main. The fallback to the change's own scripts is
 # for the pull request that adds them alone, onto the first commit, which has
 # nothing to protect.
+#
+# The landfall jobs do the same for Formula/landfall.rb: it must be byte for byte
+# the formula a stable landfall release ships, behind its signed tag and its build
+# provenance attestation, never older than the formula it replaces or than any
+# landfall version main has had, with no other file through which Homebrew could
+# take something else for it; `scope` keeps out any other new file. Until the
+# first stable release brings it, there is nothing to check, and the jobs pass so
+# that their checks still report.
 
 on:
   # Only pull requests into main, rerun when one is edited, so that checks that
@@ -158,3 +166,98 @@ jobs:
         run: |
           brew style pecheriere/tap/warden
           brew audit --strict --online pecheriere/tap/warden
+
+  # As manifest, for landfall: the base's scripts/landfall.py and
+  # landfall-release-signers judge the change, which is read from git as data.
+  # The base is checked out with its whole history, from which the script takes
+  # the highest version Formula/landfall.rb has had. The change's own script runs
+  # only for the pull request that adds landfall, onto a base with no part of it.
+  landfall-manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a base other than main
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+        run: |
+          echo "::error::this pull request's base is not main"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: change
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check landfall's formula against the release's signed tag and attestation
+        # gh needs a token even to read a public repository's attestations.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # On a pull request, a formula identical to the base's is not verified
+          # again over the network; the offline checks still run. A push to main
+          # always verifies it in full.
+          mode=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then mode=(--offline-if-unchanged); fi
+          if [ -f base/scripts/landfall.py ] && [ -f base/landfall-release-signers ]; then
+            python3 -I base/scripts/landfall.py check-tree "${mode[@]}" change HEAD base HEAD
+          elif ! [ -e base/scripts/landfall.py ] && ! [ -e base/landfall-release-signers ] \
+              && ! [ -e base/Formula/landfall.rb ]; then
+            python3 -I change/scripts/landfall.py check-tree "${mode[@]}" change HEAD base HEAD
+          else
+            echo "::error::the base commit has part of landfall's check but not all of it"
+            exit 1
+          fi
+
+  # The formula job's steps for landfall. A separate job, because folding
+  # landfall into the formula matrix would rename the checks main requires.
+  landfall-formula:
+    name: landfall-formula (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: macos-arm64, runner: macos-15}
+          - {platform: linux-amd64, runner: ubuntu-24.04}
+          - {platform: linux-arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Note that there is no formula yet
+        if: hashFiles('Formula/landfall.rb') == ''
+        run: echo "No Formula/landfall.rb until landfall's first stable release; nothing to install."
+      - name: Put Homebrew on the PATH
+        if: hashFiles('Formula/landfall.rb') != ''
+        run: |
+          if ! command -v brew > /dev/null; then
+            echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+          fi
+      - name: Tap this checkout
+        if: hashFiles('Formula/landfall.rb') != ''
+        run: |
+          brew update --quiet
+          brew --version
+          tap="$(brew --repository)/Library/Taps/pecheriere/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          ln -s "$GITHUB_WORKSPACE" "$tap"
+      # As the README says: install by full name, which also trusts the formula.
+      - name: Install and test
+        if: hashFiles('Formula/landfall.rb') != ''
+        run: |
+          brew install pecheriere/tap/landfall
+          brew test pecheriere/tap/landfall
+          landfall --version
+      - name: Style and audit
+        if: hashFiles('Formula/landfall.rb') != ''
+        run: |
+          brew style pecheriere/tap/landfall
+          brew audit --strict --online pecheriere/tap/landfall

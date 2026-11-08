@@ -15,7 +15,7 @@ Neither goes back to an older release: render refuses a version older than the
 formula already in <formula-file>, and check one older than <base-formula-file>,
 the formula on the branch a pull request merges into.
 
-warden's homebrew workflow runs render to open a bump pull request, and this
+The bump workflow runs render to open a bump pull request, and this
 repository's CI runs check on every pull request, with this script and
 release-signers as they are on main. It needs Python 3.11 or later
 and ssh-keygen, and nothing outside the standard library.

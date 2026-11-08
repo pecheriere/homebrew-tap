@@ -1,0 +1,7 @@
+# Keys that sign landfall's release tags, in the format of ssh-keygen -Y verify -f
+# (see "ALLOWED SIGNERS" in ssh-keygen(1)). A copy of the keys in
+# https://github.com/pecheriere/landfall/blob/main/crates/cli/assets/release-signers,
+# compared with the fingerprints in landfall's SECURITY.md, kept here so that a
+# formula is checked against keys this repository's own review approved, not
+# against whatever landfall's repository says. Change it in step with landfall's list.
+landfall-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIIL0cC4SOr9wwVqusLkgjYTUOC+EsTTuhfAuj2DmrTw
