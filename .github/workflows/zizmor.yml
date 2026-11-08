@@ -8,7 +8,11 @@ name: zizmor
 # Security tab.
 
 on:
+  # Only pull requests into main, rerun when one is edited, so that checks that
+  # passed against another base never count for main (see ci.yml).
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 

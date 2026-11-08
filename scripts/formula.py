@@ -93,11 +93,22 @@ def archive_name(version: str, platform: str) -> str:
     return f"warden-{version}-{platform}.tar.gz"
 
 
+class HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.startswith("https://"):
+            raise FormulaError(f"refusing a redirect that is not https: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def fetch(url: str) -> bytes:
     if not url.startswith("https://"):
         raise FormulaError(f"refusing a URL that is not https: {url}")
-    with urllib.request.urlopen(url, timeout=60) as response:
-        return response.read()
+    opener = urllib.request.build_opener(HttpsOnlyRedirects)
+    try:
+        with opener.open(url, timeout=60) as response:
+            return response.read()
+    except OSError as error:
+        raise FormulaError(f"cannot download {url}: {error}") from error
 
 
 def verify(manifest: bytes, signature: bytes, signers: Path) -> None:

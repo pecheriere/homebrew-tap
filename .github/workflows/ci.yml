@@ -13,13 +13,28 @@ name: ci
 # therefore merges in two steps (see AGENTS.md). `scope` lets a pull request that
 # does more than bump a formula merge only if the maintainer signed every commit.
 # The script's own tests run the change's code, so they have a job of their own.
+#
+# Pull requests into other branches run nothing, and an edit reruns everything: a
+# pull request built and checked against another branch and then pointed at main
+# would otherwise carry that branch's results. `manifest` and `scope` also refuse a
+# pull request whose base is not main. The fallback to the change's own scripts is
+# for the pull request that adds them alone, onto the first commit, which has
+# nothing to protect.
 
 on:
+  # Only pull requests into main, rerun when one is edited, so that checks that
+  # passed against another base never count for main.
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
 permissions: {}
+
+env:
+  # The tap's first commit, before it had a formula or scripts.
+  FIRST_COMMIT: 1602cb4a28899d81063bbaeabc921d38ee091310
 
 jobs:
   tests:
@@ -40,6 +55,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Refuse a base other than main
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+        run: |
+          echo "::error::this pull request's base is not main"
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: change
@@ -51,14 +71,15 @@ jobs:
           persist-credentials: false
       - name: Check the formula against the release's signed manifest
         run: |
+          # The committed formula, not the checked-out file, which attributes could change.
+          git -C change show HEAD:Formula/warden.rb > "$RUNNER_TEMP/warden.rb"
           if [ -f base/scripts/formula.py ] && [ -f base/Formula/warden.rb ]; then
-            python3 -I base/scripts/formula.py check change/Formula/warden.rb base/Formula/warden.rb
-          elif [ -e base/scripts ] || [ -e base/Formula ]; then
-            echo "::error::the base commit has only part of the formula and its script: refusing to check without them"
-            exit 1
+            python3 -I base/scripts/formula.py check "$RUNNER_TEMP/warden.rb" base/Formula/warden.rb
+          elif [ "$(git -C base rev-parse HEAD)" = "$FIRST_COMMIT" ]; then
+            python3 -I change/scripts/formula.py check "$RUNNER_TEMP/warden.rb"
           else
-            # Only the change that adds both to a tap that had neither.
-            python3 -I change/scripts/formula.py check change/Formula/warden.rb
+            echo "::error::the base commit has no formula and script to check with"
+            exit 1
           fi
 
   scope:
@@ -68,6 +89,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Refuse a base other than main
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+        run: |
+          echo "::error::this pull request's base is not main"
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -86,12 +112,11 @@ jobs:
         run: |
           if [ -f base/scripts/scope.py ] && [ -f base/maintainer-signers ]; then
             python3 -I base/scripts/scope.py change "$BASE" "$HEAD"
-          elif [ -e base/scripts ] || [ -e base/Formula ]; then
+          elif [ "$BASE" = "$FIRST_COMMIT" ]; then
+            python3 -I change/scripts/scope.py change "$BASE" "$HEAD"
+          else
             echo "::error::the base commit has no scope check: refusing to merge without it"
             exit 1
-          else
-            # Only the change that adds it to a tap that had nothing to protect.
-            python3 -I change/scripts/scope.py change "$BASE" "$HEAD"
           fi
 
   formula:

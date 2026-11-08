@@ -51,6 +51,14 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
   only for work the maintainer asked for. A change to `scripts/`,
   `release-signers`, `maintainer-signers` or the workflows changes what lets a bump
   merge by itself: only the maintainer merges one, after reading it.
+- `scope` accepts any commit signed by a listed key, and the workflow's token can
+  recreate a signed commit and merge pull requests. So a signed branch or pull
+  request based on the current `main` can be landed with the token alone: delete
+  signed work you do not mean to land, and keep a series that must land together in
+  one pull request.
+- Dependabot's pull requests change workflows and carry GitHub's signature, so
+  `scope` fails them: check them out, commit the same change signed, and open that
+  instead.
 - GitHub Actions are pinned to the full commit SHA of a release at least 7 days
   old.
 

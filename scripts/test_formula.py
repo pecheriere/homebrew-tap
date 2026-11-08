@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -156,6 +157,11 @@ class ChecksumsTest(unittest.TestCase):
 
 
 class FetchTest(unittest.TestCase):
+    def test_refuses_a_redirect_to_plain_http(self) -> None:
+        request = urllib.request.Request("https://github.com/x")
+        with self.assertRaisesRegex(formula.FormulaError, "redirect that is not https"):
+            formula.HttpsOnlyRedirects().redirect_request(request, None, 302, "Found", {}, "http://example.com/x")
+
     def test_refuses_plain_http(self) -> None:
         with self.assertRaisesRegex(formula.FormulaError, "not https"):
             formula.fetch("http://github.com/pecheriere/warden/releases/download/v1.2.3/x")
