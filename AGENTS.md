@@ -108,6 +108,10 @@ The maintainer does this once, in the repository's settings:
   permission. Store it as `HOMEBREW_TAP_TOKEN` in an environment named
   `homebrew-bump` whose deployment rule allows `main` only. Only `bump`'s `propose`
   job uses that environment.
+  It opens the pull request, so that its checks run, but does not write the
+  formula's commit: `main` requires signed commits, and GitHub signs a commit made
+  through the API only for an app, never for a personal token. `propose` writes
+  that commit with its own `GITHUB_TOKEN`, which GitHub signs.
 - Turn on `allow_auto_merge`, so a bump pull request can merge once its checks
   pass.
 - In the `main` ruleset, require branches to be up to date before merging, so the

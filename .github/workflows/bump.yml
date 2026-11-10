@@ -27,6 +27,13 @@ name: bump
 # can use, is a fine-grained token limited to this repository, with read and write
 # access to its contents and pull requests and none to its workflows. Only
 # `propose` sees it. When it expires, `propose` fails: replace it, then rerun.
+#
+# main requires signed commits, and GitHub signs a commit made through the API
+# only for an app, such as the job's own GITHUB_TOKEN, never for a personal token.
+# So `propose` writes the formula's commit with GITHUB_TOKEN, which may write
+# contents in that job alone, and opens the pull request with HOMEBREW_TAP_TOKEN:
+# a pull request opened with GITHUB_TOKEN would start no workflow, so the required
+# checks would never run.
 
 on:
   schedule:
@@ -161,7 +168,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: homebrew-bump
-    permissions: {}
+    permissions:
+      # Only for the formula's commit, which GitHub then signs; see the top of
+      # this file.
+      contents: write
     steps:
       # A second guard after plan: a pattern, not a name, matches nothing
       # rather than failing when there is no artifact for this formula.
@@ -170,12 +180,14 @@ jobs:
           pattern: formula-${{ matrix.formula }}
           path: formula
           merge-multiple: true
-      # The commit is made through the API with the token, so it is not one the
-      # maintainer signed. It passes CI's scope check only because it modifies an
-      # existing Formula/<name>.rb, as a regular file, and nothing else.
+      # The commit is made through the API with GITHUB_TOKEN, so it carries
+      # GitHub's signature, not the maintainer's. It passes CI's scope check only
+      # because it modifies an existing Formula/<name>.rb, as a regular file, and
+      # nothing else.
       - name: Open a pull request for the formula, with auto-merge on
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          COMMIT_TOKEN: ${{ github.token }}
           NAME: ${{ matrix.formula }}
           REPO: ${{ github.repository }}
         run: |
@@ -244,7 +256,7 @@ jobs:
           # the gh arguments, its failure would go unnoticed.
           content=$(base64 -w0 formula/formula.rb)
           gh api "repos/$REPO/git/refs" -f "ref=refs/heads/$branch" -f "sha=$main_commit" > /dev/null
-          gh api -X PUT "repos/$REPO/contents/Formula/$NAME.rb" \
+          GH_TOKEN=$COMMIT_TOKEN gh api -X PUT "repos/$REPO/contents/Formula/$NAME.rb" \
             -f "message=$NAME $version" \
             -f "content=$content" \
             -f "sha=$main_blob" \
