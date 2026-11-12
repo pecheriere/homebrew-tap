@@ -38,7 +38,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 REPO = "pecheriere/warden"
-IDENTITY = "pecheriere@users.noreply.github.com"
+# The name release-signers lists warden's release keys under. ssh-keygen looks it up
+# in that file only: a signature does not carry it.
+IDENTITY = "warden-release"
 NAMESPACE = "warden-release"
 WORKFLOW = f"https://github.com/{REPO}/.github/workflows/release.yml"
 SIGNERS = Path(__file__).resolve().parent.parent / "release-signers"

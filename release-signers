@@ -3,4 +3,13 @@
 # https://github.com/pecheriere/warden/blob/main/docs/release-signers, kept here so
 # that a formula is checked against keys this repository's own review approved, not
 # against whatever the release's tag says. Change it in step with warden's list.
-pecheriere@users.noreply.github.com namespaces="warden-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5zA+J2lBK+qWdhVBz+3WiucLhgDfWn3Yw0JHZyIhBJ
+# Every key is listed under the identity warden-release, which is what
+# scripts/formula.py checks. warden's list keeps the maintainer's older key under the
+# maintainer's address, because its release tags verify with that, but a manifest
+# signature does not carry a name, so the name here is this repository's choice.
+# The maintainer's key, which signed every release up to 0.12.0. Removed once the
+# releases signed through warden's broker are out.
+warden-release namespaces="warden-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5zA+J2lBK+qWdhVBz+3WiucLhgDfWn3Yw0JHZyIhBJ
+# The key warden's broker holds and signs releases with, from 0.13.0,
+# SHA256:q7ezyVes9zAFsYyAtOqarJZJckRAVSikw9le8ufdSdc.
+warden-release namespaces="warden-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPU8lP0ukIXv5Oi6ozNGvBHVvAzZBNvxxN8NpnCh/t0R
