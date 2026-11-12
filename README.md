@@ -30,6 +30,10 @@ release's manifest, which warden's maintainer signs with a key that is not on
 GitHub. This repository's CI refuses a formula whose checksums are not the signed
 ones, checked against its own copy of the keys in
 [`release-signers`](release-signers), and one older than the formula it replaces.
+It also downloads each archive, refuses one whose checksum is not the manifest's,
+and accepts it only if GitHub's build provenance attestation shows that warden's
+release workflow built it at the release's tag, on GitHub's runners. The `bump`
+workflow makes the same checks before it writes a formula.
 
 To check a binary yourself, follow warden's
 [verifying a release](https://github.com/pecheriere/warden/blob/main/docs/verifying-releases.md):

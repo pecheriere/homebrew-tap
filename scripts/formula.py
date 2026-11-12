@@ -6,10 +6,13 @@ Usage:
 
 Both download warden-<version>-SHA256SUMS and its .sig from the published
 release, and refuse to go on unless ssh-keygen verifies the signature against
-the keys in release-signers, in this repository. render writes the formula for
-that version. check reads the version from the formula's first URL, renders the
-formula again and fails unless the file is exactly that, so nothing but the
-version and the signed checksums can change in a bump.
+the keys in release-signers, in this repository. They then download each CLI
+archive, refuse one whose SHA-256 is not the manifest's, and refuse one that
+gh attestation verify does not show was built by warden's release workflow at
+the release's tag. render writes the formula for that version. check reads the
+version from the formula's first URL, renders the formula again and fails
+unless the file is exactly that, so nothing but the version and the signed
+checksums can change in a bump.
 
 Neither goes back to an older release: render refuses a version older than the
 formula already in <formula-file>, and check one older than <base-formula-file>,
@@ -17,13 +20,16 @@ the formula on the branch a pull request merges into.
 
 The bump workflow runs render to open a bump pull request, and this
 repository's CI runs check on every pull request, with this script and
-release-signers as they are on main. It needs Python 3.11 or later
-and ssh-keygen, and nothing outside the standard library.
+release-signers as they are on main. It needs Python 3.11 or later,
+ssh-keygen and gh (logged in, or with GH_TOKEN set: gh needs a token even to read
+a public repository's attestations), and nothing outside the standard library.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +40,7 @@ from pathlib import Path
 REPO = "pecheriere/warden"
 IDENTITY = "pecheriere@users.noreply.github.com"
 NAMESPACE = "warden-release"
+WORKFLOW = f"https://github.com/{REPO}/.github/workflows/release.yml"
 SIGNERS = Path(__file__).resolve().parent.parent / "release-signers"
 # Each platform the release ships a CLI archive for, in the order the formula
 # lists them.
@@ -145,19 +152,73 @@ def checksums(manifest: bytes, version: str) -> dict[str, str]:
     return sums
 
 
+def attestation_command(path: Path, version: str) -> list[str]:
+    return [
+        "gh",
+        "attestation",
+        "verify",
+        str(path),
+        "--hostname=github.com",
+        f"--repo={REPO}",
+        # The exact identity of the workflow run that signed it: release.yml at
+        # the release's tag, not a pattern that a longer file name could match.
+        f"--cert-identity={WORKFLOW}@refs/tags/v{version}",
+        f"--source-ref=refs/tags/v{version}",
+        "--deny-self-hosted-runners",
+    ]
+
+
+def attest(path: Path, version: str) -> None:
+    """Fails unless gh verifies the file's provenance: warden's release workflow at the release's tag."""
+    if shutil.which("gh") is None:
+        raise FormulaError("gh is not installed, so the attestation cannot be checked")
+    try:
+        result = subprocess.run(attestation_command(path, version), capture_output=True, check=False)
+    except OSError as error:
+        raise FormulaError(f"gh attestation verify failed: {error}") from error
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise FormulaError(f"gh attestation verify failed for {path.name}: {detail}")
+
+
+def verify_archives(
+    version: str,
+    sums: dict[str, str],
+    get: Callable[[str], bytes],
+    attest_file: Callable[[Path, str], None],
+) -> None:
+    """Fails unless each archive is the manifest's and its attestation checks out."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for platform in PLATFORMS:
+            name = archive_name(version, platform)
+            data = get(download_url(version, name))
+            if hashlib.sha256(data).hexdigest() != sums[platform]:
+                raise FormulaError(f"{name} does not match the manifest's checksum")
+            path = Path(tmp) / name
+            path.write_bytes(data)
+            attest_file(path, version)
+
+
 def render(version: str, sums: dict[str, str]) -> str:
     urls = {p: download_url(version, archive_name(version, p)) for p in PLATFORMS}
     return TEMPLATE.format(url=urls, sha=sums)
 
 
-def signed_formula(version: str, signers: Path, get: Callable[[str], bytes] = fetch) -> str:
+def signed_formula(
+    version: str,
+    signers: Path,
+    get: Callable[[str], bytes] = fetch,
+    attest_file: Callable[[Path, str], None] = attest,
+) -> str:
     if not VERSION.fullmatch(version):
         raise FormulaError(f"not a release version: {version}")
     manifest_name = f"warden-{version}-SHA256SUMS"
     manifest = get(download_url(version, manifest_name))
     signature = get(download_url(version, manifest_name + ".sig"))
     verify(manifest, signature, signers)
-    return render(version, checksums(manifest, version))
+    sums = checksums(manifest, version)
+    verify_archives(version, sums, get, attest_file)
+    return render(version, sums)
 
 
 def formula_version(text: str) -> str:
@@ -181,18 +242,30 @@ def refuse_older(version: str, than: Path) -> None:
         raise FormulaError(f"refusing to go back from warden {current} to {version}")
 
 
-def render_file(version: str, path: Path, signers: Path, get: Callable[[str], bytes] = fetch) -> None:
+def render_file(
+    version: str,
+    path: Path,
+    signers: Path,
+    get: Callable[[str], bytes] = fetch,
+    attest_file: Callable[[Path, str], None] = attest,
+) -> None:
     refuse_older(version, path)
-    path.write_bytes(signed_formula(version, signers, get).encode("utf-8"))
+    path.write_bytes(signed_formula(version, signers, get, attest_file).encode("utf-8"))
 
 
-def check_file(path: Path, base: Path | None, signers: Path, get: Callable[[str], bytes] = fetch) -> str:
+def check_file(
+    path: Path,
+    base: Path | None,
+    signers: Path,
+    get: Callable[[str], bytes] = fetch,
+    attest_file: Callable[[Path, str], None] = attest,
+) -> str:
     # Bytes, not text: reading text would turn a lone carriage return into a newline.
     data = path.read_bytes()
     version = formula_version(data.decode("utf-8", errors="replace"))
     if base is not None:
         refuse_older(version, base)
-    if data != signed_formula(version, signers, get).encode("utf-8"):
+    if data != signed_formula(version, signers, get, attest_file).encode("utf-8"):
         raise FormulaError(
             f"{path} is not the formula for {version}'s signed manifest: "
             f"run python3 -I scripts/formula.py render {version} {path} and compare"
