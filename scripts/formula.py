@@ -32,7 +32,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 REPO = "pecheriere/warden"
-IDENTITY = "pecheriere@users.noreply.github.com"
+# The name release-signers lists warden's release keys under. ssh-keygen looks it up
+# in that file only: a signature does not carry it.
+IDENTITY = "warden-release"
 NAMESPACE = "warden-release"
 SIGNERS = Path(__file__).resolve().parent.parent / "release-signers"
 # Each platform the release ships a CLI archive for, in the order the formula

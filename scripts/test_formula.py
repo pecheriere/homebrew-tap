@@ -173,5 +173,13 @@ class FormulaVersionTest(unittest.TestCase):
             formula.formula_version('url "https://example.com/warden-1.2.3.tar.gz"')
 
 
+
+class ReleaseSignersTest(unittest.TestCase):
+    def test_every_key_is_listed_under_the_checked_identity(self) -> None:
+        lines = [line for line in formula.SIGNERS.read_text().splitlines() if line and not line.startswith("#")]
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertEqual(line.split()[:2], [formula.IDENTITY, f'namespaces="{formula.NAMESPACE}"'])
+
 if __name__ == "__main__":
     unittest.main()
