@@ -14,7 +14,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 | Path | What |
 |---|---|
 | `Formula/warden.rb` | the formula, written by `scripts/formula.py render`; never edit it by hand |
-| `scripts/formula.py` | renders the formula from a release's signed manifest, or checks it; the `bump` workflow runs it too |
+| `scripts/formula.py` | renders the formula from a release's signed manifest, or checks it, after matching each CLI archive to the manifest and verifying its attestation with `gh`; the `bump` workflow runs it too |
 | `release-signers` | the warden-release keys the manifest must be signed with, a copy of those in warden's `docs/release-signers` |
 | `scripts/scope.py` | CI's `scope` check: a pull request that does more than bump a formula in its `FORMULAE` needs every commit signed by a key in `maintainer-signers` |
 | `maintainer-signers` | the maintainer's commit keys |
@@ -69,7 +69,7 @@ attribution lines (`Co-Authored-By`, session links, "Generated with").
 
   ```sh
   python3 -I -m unittest discover -s scripts -p 'test_*.py'
-  python3 -I scripts/formula.py check Formula/warden.rb
+  python3 -I scripts/formula.py check Formula/warden.rb   # needs gh, logged in
   python3 -I scripts/landfall.py check-tree . HEAD . origin/main   # needs gh, logged in, once the formula exists
   python3 -I scripts/scope.py . origin/main HEAD
   brew style pecheriere/tap/warden

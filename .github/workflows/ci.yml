@@ -77,7 +77,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           path: base
           persist-credentials: false
-      - name: Check the formula against the release's signed manifest
+      - name: Check the formula against the release's signed manifest and attestations
+        # gh needs a token even to read a public repository's attestations.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # The committed formula, not the checked-out file, which attributes could change.
           git -C change show HEAD:Formula/warden.rb > "$RUNNER_TEMP/warden.rb"
