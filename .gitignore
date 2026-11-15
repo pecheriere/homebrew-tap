@@ -1,1 +1,5 @@
 __pycache__/
+
+# Beads: the issue database lives in .beads/ and is backed up outside git
+.beads/
+.beads.gate.lock
