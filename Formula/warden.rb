@@ -10,19 +10,19 @@ class Warden < Formula
     depends_on arch: :arm64
 
     on_arm do
-      url "https://github.com/pecheriere/warden/releases/download/v0.17.0/warden-0.17.0-macos-arm64.tar.gz"
-      sha256 "a3acc1f9da5dbae790994ea8365a903e2592cab3c5cf78e653cb9c36c0a21e55"
+      url "https://github.com/pecheriere/warden/releases/download/v0.18.0/warden-0.18.0-macos-arm64.tar.gz"
+      sha256 "cd9fd599a28e0b1d846e93929bf40a6ab096e38fc39cfeb164e2d452c298c364"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/pecheriere/warden/releases/download/v0.17.0/warden-0.17.0-linux-arm64.tar.gz"
-      sha256 "586fe920c5f8607cb9b4a3e73b7605e16be1fc93e9f02b9b02358fa73bf5cd7b"
+      url "https://github.com/pecheriere/warden/releases/download/v0.18.0/warden-0.18.0-linux-arm64.tar.gz"
+      sha256 "7d7ee7908467569d2360e541acf6cde334d71723c9871379183e6b3b895711be"
     end
     on_intel do
-      url "https://github.com/pecheriere/warden/releases/download/v0.17.0/warden-0.17.0-linux-amd64.tar.gz"
-      sha256 "9da0017d467af1f9b053be6196dd9beb0b0cf902df077a9c562432a0b7d7e0b7"
+      url "https://github.com/pecheriere/warden/releases/download/v0.18.0/warden-0.18.0-linux-amd64.tar.gz"
+      sha256 "c7b785d5520150ef9993ad60abd632476770f5fee13b4ebc6fac2731e5e1ab8c"
     end
   end
 
